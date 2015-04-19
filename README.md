@@ -1,2 +1,2 @@
-# hp_mempool
+# objmempool
 High performance oriented mempool implementation (C++).
