@@ -44,9 +44,9 @@ endif
 
 ifeq ($(CPPUTEST_MEMORY_LEAK_DETECTION), Y)
 	ifneq ($(CPPUTEST_HOME),)
-	   	CPPUTEST_CXXFLAGS += -include $(CPPUTEST_HOME)/include/CppUTest/MemoryLeakDetectorNewMacros.h
-    		CPPUTEST_CPPFLAGS += -include $(CPPUTEST_HOME)/include/CppUTest/MemoryLeakDetectorMallocMacros.h
-    	endif
+#	   	CPPUTEST_CXXFLAGS += -include $(CPPUTEST_HOME)/include/CppUTest/MemoryLeakDetectorNewMacros.h
+    	CPPUTEST_CPPFLAGS += -include $(CPPUTEST_HOME)/include/CppUTest/MemoryLeakDetectorMallocMacros.h
+   	endif
 endif
 
 CPPUTEST_CPPFLAGS += $(CPPUTEST_WARNINGFLAGS)
