@@ -21,6 +21,8 @@ class Objmempool
 {
     typedef rte_ring Free_list;
 
+    typedef OBJ_TYPE obj_mem_slot;     // For debug purposes, the obj_mem_slot will include debug info and embed the object type.
+
 protected:
     Objmempool() {};
     ~Objmempool() {};
@@ -32,7 +34,8 @@ public:
         void * obj_array[1];
         const unsigned int num = 1;
         unsigned int n = rte_ring_dequeue_burst(free_list, obj_array, num);
-        UNUSED(n);
+        if(unlikely(n <= 0))
+            abort();
 
         void * obj = obj_array[0];
         return obj;
@@ -68,9 +71,10 @@ public:
         	free_list = new_free_list("noname", object_count, 0);
             obj_count = object_count-1;
 
-            for (size_t i=0; i < obj_count; ++i)
+            obj_memory_head = static_cast<obj_mem_slot*>(malloc(object_count * sizeof(OBJ_TYPE)));
+            obj_mem_slot * obj = obj_memory_head;
+            for (size_t i=0; i < obj_count; ++i, ++obj)
             {
-                OBJ_TYPE * const obj = ::new OBJ_TYPE();
                 void * const vobj = static_cast<void*>(obj);
                 rte_ring_enqueue_burst(free_list, &vobj, 1);
             }
@@ -79,27 +83,23 @@ public:
 
     static void mempool_destroy()
     {
-        for (size_t i=0; i < obj_count; ++i)
-        {
-            void * obj_array[1];
-            const unsigned int num = 1;
-            rte_ring_dequeue_burst(free_list, obj_array, num);
-
-            OBJ_TYPE * obj = static_cast<OBJ_TYPE*>(obj_array[0]);
-            ::delete obj;
-        }
-
         free(free_list);
+        free(obj_memory_head);
         obj_count = 0;
         free_list = NULL;
     }
 
-    static size_t get_mempool_size()
+    static std::size_t get_mempool_free_obj_count()
     {
         if(NULL != free_list)
             return rte_ring_count(free_list);
         else
             return 0;
+    }
+
+    static std::size_t get_mempool_size()
+    {
+        return obj_count;
     }
 
 private:
@@ -129,7 +129,8 @@ private:
 	}
 
     static Free_list * free_list;
-    static size_t obj_count;
+    static std::size_t obj_count;
+    static obj_mem_slot * obj_memory_head;
 
     static __thread OBJ_TYPE * cache;		// NOTE: This is a TLS variable.
 	
@@ -148,10 +149,13 @@ private:
 };
 
 template <typename OBJ_TYPE>
-size_t Objmempool<OBJ_TYPE>::obj_count = 0;
+std::size_t Objmempool<OBJ_TYPE>::obj_count = 0;
 
 template <typename OBJ_TYPE>
 typename Objmempool<OBJ_TYPE>::Free_list * Objmempool<OBJ_TYPE>::free_list = NULL;
+
+template <typename OBJ_TYPE>
+OBJ_TYPE * Objmempool<OBJ_TYPE>::obj_memory_head = NULL;
 
 template <typename OBJ_TYPE>
 __thread OBJ_TYPE * Objmempool<OBJ_TYPE>::cache = NULL;
