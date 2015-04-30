@@ -13,7 +13,6 @@
 #endif
 
 #include "rte/rte_ring.h"
-#include <list>
 
 #define POWEROF2(x) ((((x)-1) & (x)) == 0)
 
@@ -27,7 +26,7 @@ protected:
     ~Objmempool() {};
 
 public:
-    static void * operator new (size_t size)
+    static void * operator new (std::size_t size)
     {
         UNUSED(size);
         void * obj_array[1];
@@ -39,6 +38,11 @@ public:
         return obj;
     }
 
+    static void* operator new  ( std::size_t size, const std::nothrow_t& tag)
+    {
+    	return operator new(size);
+    }
+
     static void operator delete (void * m)
     {
     	const unsigned int num = 1;
@@ -46,11 +50,15 @@ public:
     	UNUSED(n);
     }
 
-    static void mempool_create(size_t object_count)
+    static void operator delete  ( void* ptr, const std::nothrow_t& tag )
+    {
+    	operator delete(ptr);
+    }
+
+    static void mempool_create(std::size_t object_count)
     {
         if(NULL == free_list)
         {
-            //free_list = ::new Free_list();
         	free_list = new_free_list("noname", object_count, 0);
             obj_count = object_count-1;
 
@@ -116,6 +124,21 @@ private:
 
     static Free_list * free_list;
     static size_t obj_count;
+
+    static __thread OBJ_TYPE * cache;		// NOTE: This is a TLS variable.
+	
+// Unsupported operators.
+private:
+    static void * operator new[] (std::size_t count)
+    {
+        UNUSED(count);
+        return NULL;
+    }
+
+    static void operator delete[] (void * m)
+    {
+        UNUSED(m);
+    }
 };
 
 template <typename OBJ_TYPE>
@@ -123,5 +146,8 @@ size_t Objmempool<OBJ_TYPE>::obj_count = 0;
 
 template <typename OBJ_TYPE>
 typename Objmempool<OBJ_TYPE>::Free_list * Objmempool<OBJ_TYPE>::free_list = NULL;
+
+template <typename OBJ_TYPE>
+__thread OBJ_TYPE * Objmempool<OBJ_TYPE>::cache = NULL;
 
 #endif /* OBJMEMPOOL_H_ */
