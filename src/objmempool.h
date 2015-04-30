@@ -40,6 +40,7 @@ public:
 
     static void* operator new  ( std::size_t size, const std::nothrow_t& tag)
     {
+        UNUSED(tag);
     	return operator new(size);
     }
 
@@ -52,9 +53,14 @@ public:
 
     static void operator delete  ( void* ptr, const std::nothrow_t& tag )
     {
+        UNUSED(tag);
     	operator delete(ptr);
     }
 
+    /*
+     *  Mempool container, implemented using a MP/MC ring queue.
+     *  Must be created at the application global init stage.
+     */
     static void mempool_create(std::size_t object_count)
     {
         if(NULL == free_list)

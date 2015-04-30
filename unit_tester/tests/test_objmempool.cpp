@@ -85,6 +85,17 @@ TEST(mempool, access_test_object_data__check_object_data_integrity)
 	delete obj;
 }
 
+TEST(mempool, use_nothrow_tag__object_provided_from_pool)
+{
+    LONGS_EQUAL(POOL_SIZE - 1, Test_object::get_mempool_size());
+
+    Test_object * obj = new (std::nothrow) Test_object;
+
+    LONGS_EQUAL(POOL_SIZE - 2, Test_object::get_mempool_size());
+
+    delete obj;
+}
+
 //TEST(mempool, new_delete_object_array__compilation_error)
 //{
 //    Test_object * obj = new Test_object[2];
