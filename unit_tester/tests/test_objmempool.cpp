@@ -6,6 +6,7 @@
 #include "CppUTest/TestHarness.h"
 
 #include "objmempool.h"
+#include "objmempool_container.h"
 
 class Test_object : public Objmempool<Test_object>
 {
@@ -40,7 +41,7 @@ TEST_GROUP(mempool_basic)
 
     void teardown()
     {
-
+        Objmempool_container::clear();
     }
 };
 
@@ -89,6 +90,8 @@ TEST_GROUP(mempool)
     void teardown()
     {
     	Test_object::mempool_destroy();
+
+    	Objmempool_container::clear();
     }
 };
 
@@ -112,6 +115,29 @@ TEST(mempool, use_nothrow_tag__object_provided_from_pool)
     LONGS_EQUAL(POOL_SIZE - 2, Test_object::get_mempool_free_obj_count());
 
     delete obj;
+}
+
+TEST(mempool, use_objmempool_container)
+{
+    const size_t pool_size = 32;
+    Test_object_ctor::mempool_create(pool_size);
+
+    const size_t expected_num_of_mempools_created = 2;
+    LONGS_EQUAL(expected_num_of_mempools_created, Objmempool_container::size());
+
+    Test_object_ctor::mempool_destroy();
+}
+
+TEST(mempool, show_cmd_for_all_objmempools)
+{
+    const size_t pool_size = 32;
+    Test_object_ctor::mempool_create(pool_size);
+
+    const size_t buf_size = 1024;
+    char buf[buf_size];
+    Objmempool_container::show_cmd(0, NULL, buf, buf_size);
+
+    Test_object_ctor::mempool_destroy();
 }
 
 //TEST(mempool, new_delete_object_array__compilation_error)
