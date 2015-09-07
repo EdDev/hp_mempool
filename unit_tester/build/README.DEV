@@ -1,0 +1,66 @@
+#
+# This is a DEV documentation for the UT build system.
+#
+
+###############################################################################
+# Inputs - these variables describe what to build
+#
+#   INCLUDE_DIRS:   Directories used to search for include files.
+#                   This generates a -I for each directory
+#   SRC_DIRS:       Directories containing source file to built into the library
+#   SRC_FILES:      Specific source files to build into library. Helpful when not all code 
+#                   in a directory can be built for test (hopefully a temporary situation)
+#   TEST_SRC_DIRS:  Directories containing unit test code build into the unit test runner
+#                   These do not go in a library. They are explicitly included in the test runner
+#   MOCKS_SRC_DIRS: Directories containing mock source files to build into the test runner
+#                   These do not go in a library. They are explicitly included in the test runner
+###############################################################################
+###############################################################################
+# You can adjust these variables to influence how to build the test target
+# and where to put and name outputs
+# See below to determine defaults
+#
+#   COMPONENT_NAME:     The name of the thing being built
+#   CPPUTEST_HOME:      Where CppUTest home dir found
+#   CPPUTEST_OBJS_DIR:  The directory where o and d files go
+#   CPPUTEST_LIB_DIR:   The directory where libs go
+#
+#   CPPUTEST_ENABLE_DEBUG:           Build for debug
+#   CPPUTEST_USE_MEM_LEAK_DETECTION: Links with overridden new and delete
+#   CPPUTEST_USE_STD_CPP_LIB:        Set to N to keep the standard C++ library
+#                                    out of the test harness
+#
+#   CPPUTEST_USE_GCOV:  Turn on coverage analysis
+#                       Clean then build with this flag set to Y, then 'make gcov'
+#
+#   CPPUTEST_WARNINGFLAGS:     Overly picky by default
+#
+#   CPPUTEST_USE_VPATH: Use Make's VPATH functionality to support user 
+#       specification of source files and directories that aren't below 
+#       the user's Makefile in the directory tree, like:
+#           SRC_DIRS += ../../lib/foo
+#       It defaults to N, and shouldn't be necessary except in the above case.
+#
+###############################################################################
+###############################################################################
+# For future use:
+#
+#   CPPUTEST_MAPFILE:       Generate a map file
+#
+#   CPPUTEST_USE_REAL_GTEST:
+#            Expect to link to gtest too.  
+#            This enables the ability to run Google Test tests as CppUTest tests
+#            using the GTestConvertor.
+#
+#   OTHER_MAKEFILE_TO_INCLUDE:
+#            A hook to use this makefile to make 
+#            other targets. Like CSlim, which is part of fitnesse
+###############################################################################
+###############################################################################
+#  Other flags users can initialize to sneak in their settings
+#
+#   CPPUTEST_CXXFLAGS   - flags for the C++ compiler
+#   CPPUTEST_CPPFLAGS   - flags for the C++ AND C compiler
+#   CPPUTEST_CFLAGS     - C complier
+#   CPPUTEST_LDFLAGS    - Linker flags
+###############################################################################
