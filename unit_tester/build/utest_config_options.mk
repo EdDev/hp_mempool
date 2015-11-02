@@ -27,3 +27,6 @@ ifndef CPPUTEST_WARNINGFLAGS
 	endif 
 	CPPUTEST_CXX_WARNINGFLAGS = -Woverloaded-virtual
 endif
+
+# Link to other libraries
+LD_LIBRARIES += -lpthread
