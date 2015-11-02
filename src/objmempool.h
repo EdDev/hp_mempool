@@ -43,6 +43,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "rte/rte_ring.h"
 #include "objmempool_container.h"
 #include <typeinfo>
+#include <exception>
 
 #define POWEROF2(x) ((((x)-1) & (x)) == 0)
 
@@ -66,11 +67,19 @@ public:
     static void operator delete  ( void* ptr, const std::nothrow_t& tag );
 
     /*
-     *  Mempool container, implemented using a MP/MC ring queue.
-     *  Must be created at the application global init stage.
+     *  Mempool container
+     *  Must be created at the application global init stage
+     *
+     *  The pool size must be a power of 2 and the user should consider that
+     *  if the cache is used, the global pool size should be: global_pool_size + cache_size * num_of_threads
      */
     static void mempool_create(std::size_t object_count);
     static void mempool_destroy();
+
+    //Cache slots factor that are allocated above the requested cache size.
+    enum {CACHE_SIZE_DEFAULT = 32, CACHE_BASE_FACTOR = 2};
+    static void mempool_cache_create(std::size_t cache_size = CACHE_SIZE_DEFAULT);
+    static void mempool_cache_destroy();
 
     static std::size_t get_mempool_free_obj_count();
     static std::size_t get_mempool_size();
@@ -87,7 +96,14 @@ private:
     static std::size_t obj_count;
     static obj_mem_slot * obj_memory_head;
 
-    static __thread OBJ_TYPE * cache;		// NOTE: This is a TLS variable.
+    struct Cache
+    {
+        obj_mem_slot ** obj_memory_head;
+        std::size_t base_size;
+        std::size_t len;                // Current cache length (may increase above base size)
+        std::size_t flushthresh;        // Cache length for which anything above the base size is flushed to main pool.
+    };
+    static __thread Cache cache;		// NOTE: This is a TLS variable.
 	
 // Unsupported operators.
 private:
@@ -112,21 +128,43 @@ template <typename OBJ_TYPE>
 OBJ_TYPE * Objmempool<OBJ_TYPE>::obj_memory_head = NULL;
 
 template <typename OBJ_TYPE>
-__thread OBJ_TYPE * Objmempool<OBJ_TYPE>::cache = NULL;
+__thread typename Objmempool<OBJ_TYPE>::Cache Objmempool<OBJ_TYPE>::cache = {NULL, 0, 0, 0};
 
 
 template <typename OBJ_TYPE>
 void * Objmempool<OBJ_TYPE>::operator new (std::size_t size)
 {
     UNUSED(size);
-    void * obj_array[1];
-    const unsigned int num = 1;
-    unsigned int n = rte_ring_dequeue_burst(free_list, obj_array, num);
-    if(unlikely(n <= 0))
-        abort();
 
-    void * obj = obj_array[0];
-    return obj;
+    if(cache.obj_memory_head != NULL)
+    {
+
+        if (cache.len < 1)
+        {
+            uint32_t req = cache.base_size - cache.len;
+            int ret = rte_ring_mc_dequeue_bulk(free_list, (void**)&cache.obj_memory_head[cache.len], req);
+
+            if (unlikely(ret < 0))
+                throw -1; //abort();
+
+            cache.len += req;
+        }
+
+        cache.len -= 1;
+        void * obj =  cache.obj_memory_head[cache.len];
+        return obj;
+    }
+    else
+    {
+        void * obj_array[1];
+        const unsigned int num = 1;
+        unsigned int n = rte_ring_dequeue_burst(free_list, obj_array, num);
+        if(unlikely(n <= 0))
+            throw -1; //abort();
+
+        void * obj = obj_array[0];
+        return obj;
+    }
 }
 
 template <typename OBJ_TYPE>
@@ -139,9 +177,33 @@ void* Objmempool<OBJ_TYPE>::operator new  ( std::size_t size, const std::nothrow
 template <typename OBJ_TYPE>
 void Objmempool<OBJ_TYPE>::operator delete (void * ptr)
 {
-    const unsigned int num = 1;
-    unsigned int n = rte_ring_enqueue_burst(free_list, &ptr, num);
-    UNUSED(n);
+    if(cache.obj_memory_head != NULL)
+    {
+        /*
+         * The cache follows the following algorithm
+         *   1. Add the objects to the cache
+         *   2. Anything greater than the cache min value (if it crosses the
+         *   cache flush threshold) is flushed to the ring.
+         */
+
+        /* Add elements back into the cache */
+        cache.obj_memory_head[cache.len] = static_cast<obj_mem_slot*>(ptr);
+        cache.len += 1;
+
+        if (cache.len >= cache.flushthresh)
+        {
+            rte_ring_mp_enqueue_bulk(free_list, (void**)&cache.obj_memory_head[cache.base_size], cache.len - cache.base_size);
+            cache.len = cache.base_size;
+        }
+    }
+    else
+    {
+        const unsigned int num = 1;
+        unsigned int n = rte_ring_enqueue_burst(free_list, &ptr, num);
+        UNUSED(n);
+    }
+//    printf("\n" "cache.len[%zu], cache.flushthresh[%zu], cache.base_size[%zu], mempool_free_obj_count[%zu]",
+//            cache.len, cache.flushthresh, cache.base_size, get_mempool_free_obj_count());
 }
 
 template <typename OBJ_TYPE>
@@ -186,6 +248,37 @@ void Objmempool<OBJ_TYPE>::mempool_destroy()
     free(obj_memory_head);
     obj_count = 0;
     free_list = NULL;
+}
+
+/*
+ *  The cache is per thread, implemented using a simple array.
+ *  Must be created at the application *thread* init stage.
+ *  Note: Two instances of the same object, on a single thread uses the same cache.
+ */
+template <typename OBJ_TYPE>
+void Objmempool<OBJ_TYPE>::mempool_cache_create(std::size_t cache_size)
+{
+    if(cache.obj_memory_head == NULL)
+    {
+        cache.obj_memory_head = (obj_mem_slot **)malloc(cache_size * CACHE_BASE_FACTOR * sizeof(obj_mem_slot*));
+        cache.base_size = cache_size;
+        cache.len = 0;
+        cache.flushthresh = cache_size * CACHE_BASE_FACTOR;
+    }
+
+    // TODO: For debug purposes the cache should be registered to a static list.
+}
+
+template <typename OBJ_TYPE>
+void Objmempool<OBJ_TYPE>::mempool_cache_destroy()
+{
+    if(cache.obj_memory_head != NULL)
+        free(cache.obj_memory_head);
+
+    cache.obj_memory_head = NULL;
+    cache.base_size = 0;
+    cache.len = 0;
+    cache.flushthresh = 0;
 }
 
 template <typename OBJ_TYPE>
@@ -246,7 +339,7 @@ rte_ring * Objmempool<OBJ_TYPE>::new_free_list(std::string _name, unsigned int q
 
     rte_ring * ring = rte_ring_create(_name.c_str(), q_size, SOCKET_ID_ANY, type);
     if(NULL == ring)
-        abort();
+        throw -1; //abort();
 
     return ring;
 }
